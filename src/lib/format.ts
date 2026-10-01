@@ -1,44 +1,33 @@
-/**
- * Funções puras de formatação de datas para a previsão.
- */
+function parseDate(date: string): Date | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return undefined;
 
-const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const MONTHS = [
-  'Jan',
-  'Fev',
-  'Mar',
-  'Abr',
-  'Mai',
-  'Jun',
-  'Jul',
-  'Ago',
-  'Set',
-  'Out',
-  'Nov',
-  'Dez',
-];
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    return undefined;
+  }
 
-/** Faz parse de uma data ISO (YYYY-MM-DD) como data local, sem fuso. */
-function parseLocalDate(iso: string): Date {
-  const [year, month, day] = iso.split('-').map(Number);
-  return new Date(year, (month ?? 1) - 1, day ?? 1);
+  return parsed;
 }
 
-/**
- * Rótulo do dia relativo a "hoje":
- * - índice 0 → "Hoje"
- * - índice 1 → "Amanhã"
- * - demais → dia da semana abreviado
- */
-export function getDayLabel(iso: string, index: number): string {
+export function getDayLabel(date: string, index: number): string {
+  const parsed = parseDate(date);
+  if (!parsed) return 'Data indisponível';
   if (index === 0) return 'Hoje';
   if (index === 1) return 'Amanhã';
-  const date = parseLocalDate(iso);
-  return WEEKDAYS[date.getDay()];
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    timeZone: 'UTC',
+  }).format(parsed);
 }
 
-/** Formata a data como "12 Jun". */
-export function getShortDate(iso: string): string {
-  const date = parseLocalDate(iso);
-  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+export function getShortDate(date: string): string {
+  const parsed = parseDate(date);
+  if (!parsed) return 'Data indisponível';
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(parsed);
 }

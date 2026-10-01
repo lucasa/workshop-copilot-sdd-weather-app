@@ -1,90 +1,110 @@
-import { useCallback, useState } from 'react';
+import { useRef, useState } from 'react';
+import { getWeather, searchCities } from '../services/weatherService';
 import type { City, WeatherData } from '../types/weather';
-import { getWeather, searchCities, WeatherServiceError } from '../services/weatherService';
 
 export type WeatherStatus = 'idle' | 'loading' | 'success' | 'error' | 'empty';
 
+type LastOperation = { type: 'search'; name: string } | { type: 'weather'; city: City };
+
 interface UseWeatherResult {
   status: WeatherStatus;
-  data: WeatherData | null;
+  data: WeatherData | undefined;
   cities: City[];
-  error: string | null;
+  error: string | undefined;
   query: string;
   search: (name: string) => Promise<void>;
   selectCity: (city: City) => Promise<void>;
   retry: () => Promise<void>;
 }
 
-/**
- * Hook de orquestração: busca cidades, seleciona uma e carrega o clima.
- * Expõe uma máquina de estados simples (idle/loading/success/error/empty).
- */
-export function useWeather(): UseWeatherResult {
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Ocorreu um erro inesperado. Tente novamente.';
+}
+
+export default function useWeather(): UseWeatherResult {
   const [status, setStatus] = useState<WeatherStatus>('idle');
-  const [data, setData] = useState<WeatherData | null>(null);
+  const [data, setData] = useState<WeatherData>();
   const [cities, setCities] = useState<City[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string>();
   const [query, setQuery] = useState('');
-  const [lastCity, setLastCity] = useState<City | null>(null);
+  const lastOperation = useRef<LastOperation | undefined>(undefined);
+  const operationId = useRef(0);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: search inicia o fluxo na montagem; loadWeather é estável
-  const search = useCallback(async (name: string) => {
-    const trimmed = name.trim();
-    setQuery(trimmed);
-    if (!trimmed) return;
-
+  async function loadCityWeather(city: City): Promise<void> {
+    const currentOperationId = ++operationId.current;
     setStatus('loading');
-    setError(null);
-    setCities([]);
+    setData(undefined);
+    setError(undefined);
+
     try {
-      const results = await searchCities(trimmed);
+      const weather = await getWeather(city);
+      if (currentOperationId !== operationId.current) return;
+
+      setData(weather);
+      setStatus('success');
+    } catch (weatherError) {
+      if (currentOperationId !== operationId.current) return;
+
+      setError(getErrorMessage(weatherError));
+      setStatus('error');
+    }
+  }
+
+  async function runSearch(name: string): Promise<void> {
+    const currentOperationId = ++operationId.current;
+    lastOperation.current = { type: 'search', name };
+    setQuery(name);
+    setStatus('loading');
+    setData(undefined);
+    setCities([]);
+    setError(undefined);
+
+    if (!name) {
+      setStatus('idle');
+      return;
+    }
+
+    try {
+      const results = await searchCities(name);
+      if (currentOperationId !== operationId.current) return;
+
+      setCities(results);
       if (results.length === 0) {
         setStatus('empty');
         return;
       }
-      // Seleciona automaticamente a primeira correspondência, mas mantém a
-      // lista para o usuário trocar.
-      setCities(results);
-      await loadWeather(results[0]);
-    } catch (err) {
+
+      const firstCity = results[0];
+      lastOperation.current = { type: 'weather', city: firstCity };
+      await loadCityWeather(firstCity);
+    } catch (searchError) {
+      if (currentOperationId !== operationId.current) return;
+
+      setError(getErrorMessage(searchError));
       setStatus('error');
-      setError(toMessage(err));
     }
-  }, []);
+  }
 
-  const loadWeather = useCallback(async (city: City) => {
-    setStatus('loading');
-    setError(null);
-    setLastCity(city);
-    try {
-      const weather = await getWeather(city);
-      setData(weather);
-      setStatus('success');
-    } catch (err) {
-      setStatus('error');
-      setError(toMessage(err));
+  async function search(name: string): Promise<void> {
+    await runSearch(name.trim());
+  }
+
+  async function selectCity(city: City): Promise<void> {
+    lastOperation.current = { type: 'weather', city };
+    setQuery(city.name);
+    await loadCityWeather(city);
+  }
+
+  async function retry(): Promise<void> {
+    const operation = lastOperation.current;
+    if (!operation) return;
+
+    if (operation.type === 'search') {
+      await runSearch(operation.name);
+    } else {
+      await loadCityWeather(operation.city);
     }
-  }, []);
-
-  const selectCity = useCallback(
-    async (city: City) => {
-      await loadWeather(city);
-    },
-    [loadWeather],
-  );
-
-  const retry = useCallback(async () => {
-    if (lastCity) {
-      await loadWeather(lastCity);
-    } else if (query) {
-      await search(query);
-    }
-  }, [lastCity, query, loadWeather, search]);
+  }
 
   return { status, data, cities, error, query, search, selectCity, retry };
-}
-
-function toMessage(err: unknown): string {
-  if (err instanceof WeatherServiceError) return err.message;
-  return 'Algo deu errado. Tente novamente.';
 }
