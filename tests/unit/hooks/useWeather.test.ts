@@ -24,7 +24,7 @@ describe('useWeather', () => {
     vi.clearAllMocks();
   });
 
-  it('searches cities and loads weather for the first result', async () => {
+  it('shows city suggestions and loads weather only after selection', async () => {
     vi.mocked(searchCities).mockResolvedValue([city]);
     vi.mocked(getWeather).mockResolvedValue(weather);
     const { result } = renderHook(() => useWeather());
@@ -34,14 +34,20 @@ describe('useWeather', () => {
     });
 
     expect(searchCities).toHaveBeenCalledWith('São Paulo');
-    expect(getWeather).toHaveBeenCalledWith(city);
+    expect(getWeather).not.toHaveBeenCalled();
     expect(result.current).toMatchObject({
-      status: 'success',
-      data: weather,
+      status: 'suggestions',
       cities: [city],
       query: 'São Paulo',
       error: undefined,
     });
+
+    await act(async () => {
+      await result.current.selectCity(city);
+    });
+
+    expect(getWeather).toHaveBeenCalledWith(city);
+    expect(result.current).toMatchObject({ status: 'success', data: weather, cities: [] });
   });
 
   it('sets empty when the search has no cities', async () => {
@@ -58,12 +64,17 @@ describe('useWeather', () => {
 
   it('retries the failed forecast for the same city', async () => {
     vi.mocked(searchCities).mockResolvedValue([city]);
-    vi.mocked(getWeather).mockRejectedValueOnce(new Error('Falha de rede.'));
+    vi.mocked(getWeather).mockRejectedValueOnce(
+      Object.assign(new Error('Falha de rede.'), { name: 'WeatherServiceError' }),
+    );
     vi.mocked(getWeather).mockResolvedValueOnce(weather);
     const { result } = renderHook(() => useWeather());
 
     await act(async () => {
       await result.current.search('São Paulo');
+    });
+    await act(async () => {
+      await result.current.selectCity(city);
     });
     expect(result.current).toMatchObject({ status: 'error', error: 'Falha de rede.' });
 
@@ -74,6 +85,33 @@ describe('useWeather', () => {
     expect(searchCities).toHaveBeenCalledTimes(1);
     expect(getWeather).toHaveBeenNthCalledWith(2, city);
     await waitFor(() => expect(result.current).toMatchObject({ status: 'success', data: weather }));
+  });
+
+  it('retries the city search after an offline failure', async () => {
+    vi.mocked(searchCities)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Verifique sua conexão.'), { name: 'WeatherServiceError' }),
+      )
+      .mockResolvedValueOnce([city]);
+    vi.mocked(getWeather).mockResolvedValue(weather);
+    const { result } = renderHook(() => useWeather());
+
+    await act(async () => {
+      await result.current.search('São Paulo');
+    });
+    expect(result.current).toMatchObject({ status: 'error', error: 'Verifique sua conexão.' });
+
+    await act(async () => {
+      await result.current.retry();
+    });
+
+    expect(searchCities).toHaveBeenNthCalledWith(2, 'São Paulo');
+    expect(result.current).toMatchObject({ status: 'suggestions', cities: [city] });
+    await act(async () => {
+      await result.current.selectCity(city);
+    });
+    expect(getWeather).toHaveBeenCalledWith(city);
+    expect(result.current).toMatchObject({ status: 'success', data: weather });
   });
 
   it('loads a city selected directly', async () => {

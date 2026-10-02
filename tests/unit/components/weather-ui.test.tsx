@@ -89,6 +89,19 @@ describe('weather UI', () => {
     fireEvent.submit(screen.getByRole('search', { name: 'Buscar cidade' }));
 
     expect(onSearch).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Digite o nome de uma cidade');
+  });
+
+  it('asks for a city when the search contains only spaces', () => {
+    const onSearch = vi.fn();
+    render(<SearchBar onSearch={onSearch} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Nome da cidade' }), {
+      target: { value: '   ' },
+    });
+    fireEvent.submit(screen.getByRole('search', { name: 'Buscar cidade' }));
+
+    expect(onSearch).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeVisible();
   });
 
   it('submits the trimmed SearchBar value', () => {
@@ -108,6 +121,9 @@ describe('weather UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fahrenheit' }));
 
     expect(screen.getByText('32 °F')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Celsius' }));
+
+    expect(screen.getByText('0 °C')).toBeInTheDocument();
   });
 
   it('converts Celsius to Fahrenheit and formats forecast days locally', () => {
@@ -144,11 +160,48 @@ describe('weather UI', () => {
     fireEvent.submit(screen.getByRole('search'));
 
     expect(screen.getByRole('status')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /São Paulo/ }));
     expect(await screen.findByRole('heading', { name: 'São Paulo' })).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
 
     fireEvent.click(screen.getByRole('button', { name: 'Fahrenheit' }));
     expect(await screen.findByText('71 °F')).toBeInTheDocument();
+  });
+
+  it('renders unavailable markers for missing weather fields without exposing NaN', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockImplementation(async (input) => {
+        const url = new URL(String(input));
+        if (url.hostname === 'geocoding-api.open-meteo.com') {
+          return new Response(
+            JSON.stringify({
+              results: [
+                {
+                  id: mockWeatherData.city.id,
+                  name: mockWeatherData.city.name,
+                  latitude: mockWeatherData.city.latitude,
+                  longitude: mockWeatherData.city.longitude,
+                  country: mockWeatherData.city.country,
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ daily: { time: ['2026-10-01'] } }), { status: 200 });
+      }),
+    );
+    render(<App />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Nome da cidade' }), {
+      target: { value: 'São Paulo' },
+    });
+    fireEvent.submit(screen.getByRole('search'));
+    fireEvent.click(await screen.findByRole('button', { name: /São Paulo/ }));
+
+    expect(await screen.findByRole('heading', { name: 'São Paulo' })).toBeInTheDocument();
+    expect(screen.getAllByText('Indisponível').length).toBeGreaterThan(0);
+    expect(document.body).not.toHaveTextContent(/NaN|undefined/);
   });
 
   it('shows the empty state for cities without a local fixture', async () => {
@@ -175,6 +228,7 @@ describe('weather UI', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
 
+    fireEvent.click(await screen.findByRole('button', { name: /São Paulo/ }));
     expect(await screen.findByRole('heading', { name: 'São Paulo' })).toBeInTheDocument();
   });
 });

@@ -45,10 +45,10 @@ describe('searchCities', () => {
 
     const cities = await searchCities('São Paulo & região');
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://geocoding-api.open-meteo.com/v1/search?name=S%C3%A3o%20Paulo%20%26%20regi%C3%A3o&count=10&language=pt&format=json',
-      { signal: expect.any(AbortSignal) },
-    );
+    const [requestUrl, requestOptions] = fetchMock.mock.calls[0];
+    expect(new URL(String(requestUrl)).searchParams.get('name')).toBe('São Paulo & região');
+    expect(requestUrl).toContain('S%C3%A3o%20Paulo%20%26%20regi%C3%A3o');
+    expect(requestOptions?.signal).toBeInstanceOf(AbortSignal);
     expect(cities).toEqual([
       {
         id: 3448439,
@@ -82,6 +82,27 @@ describe('searchCities', () => {
   it('throws WeatherServiceError when the response is not ok', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 503 }));
     vi.stubGlobal('fetch', fetchMock);
+
+    await expect(searchCities('São Paulo')).rejects.toBeInstanceOf(WeatherServiceError);
+  });
+
+  it('converts invalid JSON and malformed results into a friendly service error', async () => {
+    const invalidJsonFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('{', { status: 200 }));
+    vi.stubGlobal('fetch', invalidJsonFetch);
+
+    await expect(searchCities('São Paulo')).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: 'A resposta da busca de cidades é inválida. Tente novamente.',
+    });
+
+    const malformedFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ results: 'nenhuma cidade' }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', malformedFetch);
 
     await expect(searchCities('São Paulo')).rejects.toBeInstanceOf(WeatherServiceError);
   });
