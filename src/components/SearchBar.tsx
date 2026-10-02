@@ -7,15 +7,21 @@ interface SearchBarProps {
 
 export default function SearchBar({ onSearch, disabled = false }: SearchBarProps) {
   const [city, setCity] = useState('');
+  const [validationError, setValidationError] = useState('');
   const inputId = useId();
+  const validationErrorId = useId();
   const trimmedCity = city.trim();
-  const canSubmit = !disabled && trimmedCity.length > 0;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSubmit) return;
+    if (disabled) return;
+    if (!trimmedCity) {
+      setValidationError('Digite o nome de uma cidade para iniciar a busca.');
+      return;
+    }
 
+    setValidationError('');
     onSearch(trimmedCity);
   }
 
@@ -34,22 +40,32 @@ export default function SearchBar({ onSearch, disabled = false }: SearchBarProps
           id={inputId}
           type="search"
           value={city}
-          onChange={(event) => setCity(event.target.value)}
           placeholder="Buscar cidade"
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
+          aria-invalid={Boolean(validationError)}
+          aria-describedby={validationError ? validationErrorId : undefined}
+          onChange={(event) => {
+            setCity(event.target.value);
+            if (validationError) setValidationError('');
+          }}
           disabled={disabled}
           className="w-full min-w-0 rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-base text-slate-50 placeholder:text-slate-300/70 outline-none transition focus-visible:border-transparent disabled:cursor-not-allowed disabled:opacity-60"
         />
         <button
           type="submit"
-          disabled={!canSubmit}
-          className="w-full rounded-xl bg-accent-400 px-4 py-2.5 text-sm font-semibold text-night-900 shadow-sm transition hover:bg-accent-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300 sm:w-auto"
+          disabled={disabled}
+          className="w-full rounded-xl bg-accent-400 px-4 py-2.5 text-sm font-semibold text-night-900 shadow-sm transition enabled:hover:bg-accent-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300 disabled:opacity-70 sm:w-auto"
         >
           Buscar
         </button>
       </div>
+      {validationError && (
+        <p id={validationErrorId} className="mt-2 text-sm text-rose-200" role="alert">
+          {validationError}
+        </p>
+      )}
     </form>
   );
 }

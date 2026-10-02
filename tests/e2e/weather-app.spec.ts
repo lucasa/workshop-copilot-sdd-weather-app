@@ -60,6 +60,7 @@ for (const viewport of viewports) {
     const search = page.getByRole('search', { name: 'Buscar cidade' });
     await search.getByRole('searchbox', { name: 'Nome da cidade' }).fill('São Paulo');
     await search.getByRole('button', { name: 'Buscar' }).click();
+    await page.getByRole('button', { name: /São Paulo/ }).click();
 
     await expect(page.getByRole('heading', { name: 'São Paulo' })).toBeVisible();
     await expect(page.getByRole('listitem')).toHaveCount(5);

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { getWeather, searchCities } from '../services/weatherService';
 import type { City, WeatherData } from '../types/weather';
 
-export type WeatherStatus = 'idle' | 'loading' | 'success' | 'error' | 'empty';
+export type WeatherStatus = 'idle' | 'loading' | 'suggestions' | 'success' | 'error' | 'empty';
 
 type LastOperation = { type: 'search'; name: string } | { type: 'weather'; city: City };
 
@@ -18,7 +18,8 @@ interface UseWeatherResult {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Ocorreu um erro inesperado. Tente novamente.';
+  if (error instanceof Error && error.name === 'WeatherServiceError') return error.message;
+  return 'Não foi possível consultar os dados do tempo. Tente novamente.';
 }
 
 export default function useWeather(): UseWeatherResult {
@@ -74,9 +75,7 @@ export default function useWeather(): UseWeatherResult {
         return;
       }
 
-      const firstCity = results[0];
-      lastOperation.current = { type: 'weather', city: firstCity };
-      await loadCityWeather(firstCity);
+      setStatus('suggestions');
     } catch (searchError) {
       if (currentOperationId !== operationId.current) return;
 
@@ -92,6 +91,7 @@ export default function useWeather(): UseWeatherResult {
   async function selectCity(city: City): Promise<void> {
     lastOperation.current = { type: 'weather', city };
     setQuery(city.name);
+    setCities([]);
     await loadCityWeather(city);
   }
 

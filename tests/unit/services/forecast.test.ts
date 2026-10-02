@@ -26,6 +26,8 @@ describe('getWeather', () => {
             apparent_temperature: 22.1,
             relative_humidity_2m: 68,
             wind_speed_10m: 12.3,
+            precipitation: 0.2,
+            surface_pressure: 1012.3,
             weather_code: 2,
           },
           daily: {
@@ -61,6 +63,8 @@ describe('getWeather', () => {
       apparentTemperatureC: 22.1,
       relativeHumidityPercent: 68,
       windSpeedKmh: 12.3,
+      precipitationMm: 0.2,
+      pressureHpa: 1012.3,
       weatherCode: 2,
     });
     expect(result.forecast).toHaveLength(5);
@@ -71,7 +75,7 @@ describe('getWeather', () => {
       weatherCode: 61,
       precipitationProbabilityPercent: 70,
     });
-    expect(result.forecast[4].precipitationProbabilityPercent).toBe(0);
+    expect(result.forecast[4].precipitationProbabilityPercent).toBeUndefined();
   });
 
   it('throws WeatherServiceError when the forecast response is not ok', async () => {
@@ -99,14 +103,49 @@ describe('getWeather', () => {
     expect(result.forecast).toEqual([{ date: '2026-10-01' }, { date: '2026-10-02' }]);
   });
 
+  it('accepts an omitted current section and missing daily measurements', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ daily: { time: ['2026-10-01'] } }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getWeather(city)).resolves.toMatchObject({
+      current: {},
+      forecast: [{ date: '2026-10-01' }],
+    });
+  });
+
   it.each([
-    { current: { temperature_2m: 20 } },
-    { daily: { time: ['2026-10-01'] } },
-  ])('throws WeatherServiceError when a required response section is absent', async (data) => {
+    { current: '20 graus', daily: { time: ['2026-10-01'] } },
+    { current: { temperature_2m: 20 }, daily: { time: '2026-10-01' } },
+  ])('throws WeatherServiceError when a response section has an invalid shape', async (data) => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(new Response(JSON.stringify(data), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getWeather(city)).rejects.toBeInstanceOf(WeatherServiceError);
+  });
+
+  it('converts malformed forecast JSON and daily data into a service error', async () => {
+    const invalidJsonFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('{', { status: 200 }));
+    vi.stubGlobal('fetch', invalidJsonFetch);
+
+    await expect(getWeather(city)).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: 'A resposta da previsão do tempo é inválida. Tente novamente.',
+    });
+
+    const malformedFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ current: {}, daily: { time: 'hoje' } }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', malformedFetch);
 
     await expect(getWeather(city)).rejects.toBeInstanceOf(WeatherServiceError);
   });

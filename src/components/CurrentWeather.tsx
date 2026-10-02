@@ -63,11 +63,9 @@ export default function CurrentWeather({ city, current, unit }: CurrentWeatherPr
             </p>
           </div>
           <p className="mt-3 text-base text-slate-200">{weather.label}</p>
-          {current?.apparentTemperatureC !== undefined && (
-            <p className="mt-1 text-sm text-slate-300">
-              Sensação térmica de {formatTemperature(current.apparentTemperatureC, unit)}
-            </p>
-          )}
+          <p className="mt-1 text-sm text-slate-300">
+            Sensação térmica de {formatTemperature(current?.apparentTemperatureC, unit)}
+          </p>
         </div>
 
         <dl className="grid grid-cols-2 gap-2 sm:gap-3">

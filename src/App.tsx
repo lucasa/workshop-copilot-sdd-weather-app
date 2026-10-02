@@ -1,4 +1,5 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
+import CitySuggestions from './components/CitySuggestions';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
 import SearchBar from './components/SearchBar';
@@ -6,12 +7,24 @@ import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import UnitToggle from './components/UnitToggle';
+import useUnitPreference from './hooks/useUnitPreference';
 import useWeather from './hooks/useWeather';
-import type { Unit } from './types/weather';
 
 export default function App() {
-  const [unit, setUnit] = useState<Unit>('celsius');
+  const [unit, setUnit] = useUnitPreference();
   const weather = useWeather();
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (
+      weather.status === 'suggestions' ||
+      weather.status === 'success' ||
+      weather.status === 'empty' ||
+      weather.status === 'error'
+    ) {
+      resultsRef.current?.focus();
+    }
+  }, [weather.status]);
 
   let content: ReactNode;
 
@@ -26,6 +39,9 @@ export default function App() {
       break;
     case 'loading':
       content = <LoadingState />;
+      break;
+    case 'suggestions':
+      content = <CitySuggestions cities={weather.cities} onSelect={weather.selectCity} />;
       break;
     case 'empty':
       content = (
@@ -74,7 +90,16 @@ export default function App() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
-        {content}
+        <div
+          ref={resultsRef}
+          role="region"
+          aria-label="Resultados da busca"
+          aria-busy={weather.status === 'loading'}
+          tabIndex={-1}
+          className="rounded-sm focus:outline focus:outline-2 focus:outline-offset-4 focus:outline-accent-400"
+        >
+          {content}
+        </div>
       </main>
     </div>
   );
